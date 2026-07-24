@@ -3,7 +3,7 @@
 
 (new class() {
 
-    private const RENAMED_FILENAME_PATTERN = '/^[0-9]{8}_[0-9]{6}_[0-9]+(\([0-9]{3}\))?\.(dng|jpg|jpeg|heic|raf|mov|mp4)$/i';
+    private const RENAMED_FILENAME_PATTERN = '/^[0-9]{8}_[0-9]{6}_(?<size>[0-9]+)(?:_(?<camera>[A-Z0-9]+))?(\([0-9]{3}\))?\.(?<extension>dng|jpg|jpeg|heic|raf|mov|mp4)$/i';
 
     private const ORIGINAL_FILENAME_PATTERN = '/^[A-Z0-9_\-]+(\([0-9]{3}\))?( [0-9]+)?\.(dng|jpg|jpeg|raf|heic|mov|mp4)$/i';
 
@@ -164,6 +164,81 @@
 
 
 
+    /**
+     * Converts one EXIF camera field into a safe uppercase alphanumeric
+     * filename component.
+     * Values that are empty or common EXIF placeholders are not recognizable
+     * camera metadata and are omitted from the generated name.
+     */
+    private function normalizeCameraName(mixed $value): ?string {
+        if (!is_string($value) && !is_int($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $placeholder = strtolower(preg_replace('/\s+/', ' ', $value));
+        if (in_array($placeholder, [
+            '-',
+            '?',
+            'n/a',
+            'na',
+            'none',
+            'null',
+            'unknown',
+            'undefined',
+            'unrecognized',
+            'not available',
+        ], true)) {
+            return null;
+        }
+
+        if (function_exists('iconv')) {
+            $asciiValue = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+            if ($asciiValue !== false) {
+                $value = $asciiValue;
+            }
+        }
+
+        $value = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $value));
+        if ($value === '' || !preg_match('/[A-Za-z0-9]/', $value)) {
+            return null;
+        }
+
+        return $value;
+    }
+
+
+
+    /**
+     * Returns the optional camera suffix, including its leading underscore.
+     * A partially populated EXIF record contributes whichever field is usable.
+     */
+    private function getCameraNameSuffix(array $exif): string {
+        $parts = [];
+        foreach (['Make', 'Model'] as $field) {
+            $component = $this->normalizeCameraName($exif[$field] ?? null);
+            if ($component !== null) {
+                $parts[] = $component;
+            }
+        }
+
+        return $parts === [] ? '' : '_' . implode('', $parts);
+    }
+
+
+
+    private function getOutputExtension(SplFileInfo $file): string {
+        $extension = strtolower($file->getExtension());
+
+        return $extension === 'jpg' ? 'jpeg' : $extension;
+    }
+
+
+
     private function isICloudPlaceholder(SplFileInfo $file): bool {
         if (PHP_OS_FAMILY !== 'Darwin') {
             return false;
@@ -264,12 +339,27 @@
             return false;
         }
 
-        if (preg_match(self::RENAMED_FILENAME_PATTERN, $originalFilename)) {
+        $renamedFilenameMatches = [];
+        $filenameLooksRenamed = preg_match(
+            self::RENAMED_FILENAME_PATTERN,
+            $originalFilename,
+            $renamedFilenameMatches
+        ) === 1;
+        $alreadyRenamed = $filenameLooksRenamed
+            && (string) $file->getSize() === ($renamedFilenameMatches['size'] ?? '');
+        $outputExtension = $this->getOutputExtension($file);
+        $extensionNeedsNormalization = $filenameLooksRenamed
+            && strtolower($renamedFilenameMatches['extension'] ?? '') !== $outputExtension;
+        if ($alreadyRenamed
+            && !$extensionNeedsNormalization
+            && ($renamedFilenameMatches['camera'] ?? '') !== ''
+        ) {
             echo "Already renamed." . PHP_EOL;
 
             return false;
         }
 
+        $cameraNameSuffix = '';
         if (preg_match(self::VIDEO_FILENAME_PATTERN, $originalFilename)) {
             $dateTime = new DateTime();
             $dateTime->setTimestamp($file->getMTime());
@@ -291,7 +381,7 @@
             }
 
             $exif = @exif_read_data($tmpJpegPathname ?? $file->getPathname()) ?: [];
-            //var_dump($exif);
+            $cameraNameSuffix = $this->getCameraNameSuffix($exif);
             $dateTimeString = $exif['DateTimeOriginal'] ?? $exif['DateTime'] ?? null;
             $timestampString = $exif['FileDateTime'] ?? null;
             if ($dateTimeString) {
@@ -312,7 +402,14 @@
                 unlink($tmpJpegPathname);
             }
         }
-        $newFilename = $newFilenamePrefix . '_' . $file->getSize() . '.' . strtolower($file->getExtension());
+        if ($alreadyRenamed && !$extensionNeedsNormalization && $cameraNameSuffix === '') {
+            echo "Already renamed." . PHP_EOL;
+
+            return false;
+        }
+
+        $baseName = $newFilenamePrefix . '_' . $file->getSize() . $cameraNameSuffix;
+        $newFilename = $baseName . '.' . $outputExtension;
         $newFilePath = $file->getPath() . '/' . $newFilename;
         $targetExistsInIndex = $this->lowerFilenameExist($newFilename);
         $targetExistsOnDisk = file_exists($newFilePath);
@@ -331,11 +428,9 @@
                 return false;
             }
 
-            $baseName = $newFilenamePrefix . '_' . $file->getSize();
-            $extension = strtolower($file->getExtension());
             $suffix = 1;
             do {
-                $newFilename = sprintf('%s(%03d).%s', $baseName, $suffix, $extension);
+                $newFilename = sprintf('%s(%03d).%s', $baseName, $suffix, $outputExtension);
                 $newFilePath = $file->getPath() . '/' . $newFilename;
                 $suffix++;
             } while ($this->lowerFilenameExist($newFilename) || file_exists($newFilePath));

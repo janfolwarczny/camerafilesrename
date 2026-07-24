@@ -1,6 +1,6 @@
 # Camera Files Rename
 
-A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS_FILESIZE.ext` (e.g. `20241102_153045_25165824.raf`). It extracts EXIF/mtime datetime and appends the raw byte size with a lowercased extension. Supports duplicate handling with `(001)`, `(002)` suffixes, concurrent execution safety via file locking, and debug mode.
+A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS_FILESIZE_MAKEMODEL.ext` (e.g. `20241102_153045_25165824_FUJIFILMXT5.raf`). It extracts EXIF/mtime datetime, usable EXIF camera make/model, and the raw byte size with a lowercased extension; `.jpg` output is normalized to `.jpeg`. Camera fields are uppercased, stripped to alphanumeric characters, and concatenated. Missing or unrecognizable make/model fields are omitted. Supports duplicate handling with `(001)`, `(002)` suffixes, concurrent execution safety via file locking, and debug mode.
 
 ---
 

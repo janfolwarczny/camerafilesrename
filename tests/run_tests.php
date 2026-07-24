@@ -114,16 +114,18 @@ $withoutNewLogs = static fn(array $files): array => array_values(array_filter(
 
 // --- Expected names ----------------------------------------------------------
 
-$exifName = '20241102_153045_' . $fixtureSize('exif.jpg') . '.jpg';
-$rafExifName = '20241102_153045_' . $fixtureSize('exif.raf') . '.raf';
-$photoName = date('Ymd_His', MTIME_PHOTO) . '_' . $fixtureSize('plain.jpg') . '.jpg';
-$lowerName = date('Ymd_His', MTIME_LOWER) . '_' . $fixtureSize('plain.jpg') . '.jpg';
+$cameraSuffix = '_FUJIFILMXT5';
+$exifName = '20241102_153045_' . $fixtureSize('exif.jpg') . $cameraSuffix . '.jpeg';
+$rafExifName = '20241102_153045_' . $fixtureSize('exif.raf') . $cameraSuffix . '.raf';
+$photoName = date('Ymd_His', MTIME_PHOTO) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
+$lowerName = date('Ymd_His', MTIME_LOWER) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $videoName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('video.mov') . '.mov';
 $videoName001 = preg_replace('/\.mov$/', '(001).mov', $videoName);
 $videoName002 = preg_replace('/\.mov$/', '(002).mov', $videoName);
-$photoName001 = preg_replace('/\.jpg$/', '(001).jpg', $photoName);
+$photoName001 = preg_replace('/\.jpeg$/', '(001).jpeg', $photoName);
 $migratedName = '00000000_000000_' . $fixtureSize('image.raf') . '.raf';
 $zeroName = '00000000_000000_' . $fixtureSize('image_small.raf') . '.raf';
+$tinyName = '20241102_153045_' . $fixtureSize('tiny.raf') . '.raf';
 
 // --- Run 1: directory mode, rename behavior ----------------------------------
 
@@ -142,7 +144,7 @@ copy("$fixturesDir/exif.raf", "$workDir/FUJIFILM.RAF");                        /
 touch("$workDir/FUJIFILM.RAF", MTIME_VIDEO);                                   // wrong mtime: EXIF must win
 copy("$fixturesDir/image.raf", "$workDir/20241102153045_DSCF1234.RAF");        // previous naming scheme
 copy("$fixturesDir/image_small.raf", "$workDir/00000000_000000_12345.raf");    // zero prefix = re-process
-copy("$fixturesDir/tiny.raf", "$workDir/20241102_153045_99999.raf");           // already renamed
+copy("$fixturesDir/tiny.raf", "$workDir/$tinyName");                          // already renamed
 file_put_contents("$workDir/_camerafilesrename_1234567890.log", "old log\n");        // old collision log
 file_put_contents("$workDir/notes.txt", "not a camera file\n");                // unsupported extension
 
@@ -161,7 +163,7 @@ $check(count($movLosers) === 0, 'same-second + same-size collision: no source .m
 $check(in_array($rafExifName, $files1, true), "RAF date read from embedded JPEG preview, not mtime: $rafExifName");
 $check(in_array($migratedName, $files1, true), "previous scheme re-renamed: $migratedName");
 $check(in_array($zeroName, $files1, true), "zero prefix stripped and re-processed: $zeroName");
-$check(in_array('20241102_153045_99999.raf', $files1, true), 'already-renamed file left untouched');
+$check(in_array($tinyName, $files1, true), 'already-renamed file left untouched');
 $check(in_array('_camerafilesrename_1234567890.log', $files1, true), 'old collision log left untouched');
 $check(in_array('notes.txt', $files1, true), 'unsupported extension left untouched');
 $check(str_contains($output1, 'Already renamed.'), 'stdout reports "Already renamed."');
@@ -221,7 +223,7 @@ $check(in_array($videoName, $files3b, true), 'listed video renamed from mtime');
 $check(in_array($videoName001, $files3b, true), 'listed duplicate .mov gets (001) suffix');
 $movLosers3b = array_intersect(['CLIP_A.mov', 'CLIP_B.mov'], $files3b);
 $check(count($movLosers3b) === 0, 'listed .mov collision leaves no source untouched');
-$check(in_array($photoName, $files3b, true), 'listed .jpg renamed');
+$check(in_array($photoName, $files3b, true), 'listed .jpg renamed as .jpeg');
 $check(!str_contains($output3b, 'already exists.'), 'no collision error in file-list mode for suffix rename');
 $check(glob("$filesDir/_camerafilesrename_*.log") === [], 'no collision log written next to listed files');
 
@@ -294,7 +296,7 @@ echo "--- Run 5: mixed directories and files ---\n";
 ]);
 $check($exitCode5 === 0, 'mixed directories and files accepted');
 $check(!str_contains($output5, 'Error'), 'no errors in mixed run');
-$outsideName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('plain.jpg') . '.jpg';
+$outsideName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $check(is_file("$mixedDir/dirA/$photoName"), 'file in first scanned directory renamed');
 $check(is_file("$mixedDir/dirB/$lowerName"), 'file in second scanned directory renamed');
 $check(is_file("$mixedDir/dirC/$outsideName"), 'individual file argument renamed');
@@ -518,6 +520,39 @@ $check(
     'iCloud guard: no iCloud skip message for regular local files'
 );
 
+// --- Run 11: add camera suffix to an existing date/size name ------------------
+
+$cameraMigrationDir = $makeDir();
+$formattedWithoutCameraName = '20241102_153045_' . $fixtureSize('exif.jpg') . '.jpg';
+copy("$fixturesDir/exif.jpg", "$cameraMigrationDir/$formattedWithoutCameraName");
+
+echo "--- Run 11: add camera suffix to an existing formatted name ---\n";
+[$output11, $exitCode11] = $runScript([$cameraMigrationDir]);
+$files11 = $listFiles($cameraMigrationDir);
+$check($exitCode11 === 0, 'formatted name with EXIF camera metadata exits 0');
+$check(is_file("$cameraMigrationDir/$exifName"), "formatted name gets camera suffix: $exifName");
+$check(!is_file("$cameraMigrationDir/$formattedWithoutCameraName"), 'formatted name without camera suffix is replaced');
+
+[$output11b, $exitCode11b] = $runScript([$cameraMigrationDir]);
+$check($exitCode11b === 0, 'camera-suffixed migrated name is idempotent');
+$check(substr_count($output11b, 'Already renamed.') === 1, 'camera-suffixed migrated name is skipped on the next run');
+
+// --- Run 12: changed file size invalidates an existing formatted name --------
+
+$sizeChangedDir = $makeDir();
+$originalSize = $fixtureSize('exif.jpg');
+$changedSize = $originalSize + 1;
+$sizeChangedSourceName = '20241102_153045_' . $originalSize . $cameraSuffix . '.jpg';
+$sizeChangedTargetName = '20241102_153045_' . $changedSize . $cameraSuffix . '.jpeg';
+copy("$fixturesDir/exif.jpg", "$sizeChangedDir/$sizeChangedSourceName");
+file_put_contents("$sizeChangedDir/$sizeChangedSourceName", "x", FILE_APPEND);
+
+echo "--- Run 12: changed file size ---\n";
+[$output12, $exitCode12] = $runScript([$sizeChangedDir]);
+$check($exitCode12 === 0, 'changed-size formatted file exits 0');
+$check(is_file("$sizeChangedDir/$sizeChangedTargetName"), "changed-size file gets the current size: $sizeChangedTargetName");
+$check(!is_file("$sizeChangedDir/$sizeChangedSourceName"), 'changed-size old filename is replaced');
+
 // --- Summary -------------------------------------------------------------------
 
 if ($failures > 0) {
@@ -542,6 +577,9 @@ if ($failures > 0) {
     echo "run 9b:\n$output9b\n";
     echo "run 9c:\n$output9c\n";
     echo "run 10:\n$output10\n";
+    echo "run 11:\n$output11\n";
+    echo "run 11b:\n$output11b\n";
+    echo "run 12:\n$output12\n";
     echo "FAILED: $failures assertion(s)\n";
     exit(1);
 }
