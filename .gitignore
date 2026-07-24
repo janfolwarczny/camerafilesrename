@@ -1,0 +1,17 @@
+.idea
+.DS_Store
+.phpunit.result.cache
+.vscode
+/var
+**/*.local
+**/*.local.*
+
+# Exceptions
+!.gitignore
+!.htaccess
+
+# MCP & Tools
+.claude/launch.json
+.rtk/
+.playwright-mcp/
+opencode.json
