@@ -11,5 +11,6 @@
 
 # MCP & Tools
 .claude/launch.json
+.codex/config.toml
 .rtk/
 opencode.json
