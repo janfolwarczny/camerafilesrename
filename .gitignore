@@ -2,7 +2,6 @@
 .DS_Store
 .phpunit.result.cache
 .vscode
-/var
 **/*.local
 **/*.local.*
 
@@ -13,5 +12,4 @@
 # MCP & Tools
 .claude/launch.json
 .rtk/
-.playwright-mcp/
 opencode.json
