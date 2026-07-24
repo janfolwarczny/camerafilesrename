@@ -81,7 +81,7 @@ osascript -e "display dialog \"$RESULT\" with title \"Camera Files Rename\" butt
 
 ## How it works
 
-- **Date extraction:** EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always use file mtime.
+- **Date extraction:** EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always use file mtime. For `.raf` files, EXIF is read from the embedded JPEG preview, since PHP cannot parse the RAF container directly.
 - **Duplicate handling:** If two files have the same datetime and size, the first gets the plain name, duplicates get `(001)`, `(002)`… suffixes.
 - **Concurrency safety:** Per-directory `flock()` locking prevents race conditions when multiple Finder selections launch parallel instances.
 - **Idempotency:** Already-renamed files are skipped on subsequent runs.

@@ -47,6 +47,16 @@ file_put_contents(
 );
 unlink($baseJpgPathname);
 
+// --- RAF with embedded JPEG preview ---------------------------------------------
+
+// exif.raf: minimal Fuji RAF container (magic + directory at 0x54/0x58) wrapping
+// exif.jpg as the embedded preview -> the script must read the date from the preview.
+$jpegWithExif = file_get_contents($fixturesDir . '/exif.jpg');
+$rafData = str_pad('FUJIFILMCCD-RAW 0201', 0x54, "\0")
+    . pack('N2', 0x94, strlen($jpegWithExif));
+$rafData = str_pad($rafData, 0x94, "\0") . $jpegWithExif;
+file_put_contents($fixturesDir . '/exif.raf', $rafData);
+
 // --- Fake camera files (content is irrelevant; only size and mtime matter) ----
 
 file_put_contents($fixturesDir . '/image.raf', 'fakerafdata1');   // 12 bytes, unreadable EXIF -> zero prefix
@@ -69,6 +79,16 @@ if (isset($plain['DateTimeOriginal']) || isset($plain['DateTime']) || !isset($pl
 $raf = @exif_read_data($fixturesDir . '/image.raf') ?: [];
 if (isset($raf['DateTimeOriginal']) || isset($raf['DateTime']) || isset($raf['FileDateTime'])) {
     exit("image.raf fixture is broken: expected no readable date at all.\n");
+}
+
+$rafContainer = file_get_contents($fixturesDir . '/exif.raf');
+$rafDirectory = unpack('Noffset/Nlength', substr($rafContainer, 0x54, 8));
+$tmpJpeg = $fixturesDir . '/_rafcheck.jpg';
+file_put_contents($tmpJpeg, substr($rafContainer, $rafDirectory['offset'], $rafDirectory['length']));
+$rafExif = @exif_read_data($tmpJpeg) ?: [];
+unlink($tmpJpeg);
+if (($rafExif['DateTimeOriginal'] ?? null) !== EXIF_DATETIME_ORIGINAL) {
+    exit("exif.raf fixture is broken: embedded JPEG DateTimeOriginal not readable.\n");
 }
 
 foreach (glob($fixturesDir . '/*') as $pathname) {

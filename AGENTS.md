@@ -30,6 +30,11 @@ php tests/run_tests.php                                       # framework-free t
 - Date source order: EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always
   use file mtime. mtime-based dates are formatted in PHP's default timezone (`date.timezone`),
   EXIF dates as-is. If no date is found the prefix is all zeros (`00000000_000000`).
+  PHP's `exif_read_data()` cannot parse the `.raf` container, so for `.raf` the EXIF is read from
+  the embedded JPEG preview (offset/length are big-endian uint32 at header `0x54`/`0x58`), which is
+  extracted to a temp `_camerafilesrename_raftojpeg_*.jpeg` in the target dir and deleted after
+  reading. Non-Fuji or truncated `.raf` files fail the extraction and fall through to the normal
+  fallbacks (typically the zero prefix), exactly as before.
 - A leading all-zeros prefix means "no date found on a previous run" — it is stripped so the file
   gets re-processed. Re-processing a file that still has no date logs a "new filename already
   exists" error against itself and moves on; that is expected noise, not a real conflict.

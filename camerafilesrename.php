@@ -196,6 +196,54 @@
 
 
 
+    /**
+     * Extracts the embedded JPEG preview from a Fuji RAF file to $jpegPathname.
+     * The RAF header stores the JPEG offset/length as big-endian uint32 at 0x54/0x58.
+     * Returns false for non-RAF or truncated files so callers fall back gracefully.
+     */
+    private function extractRafEmbeddedJpeg(string $rafPathname, string $jpegPathname): bool {
+        $source = @fopen($rafPathname, 'rb');
+        if ($source === false) {
+            return false;
+        }
+        $header = fread($source, 0x5C);
+        if (strlen($header) < 0x5C || !str_starts_with($header, 'FUJIFILMCCD-RAW ')) {
+            fclose($source);
+
+            return false;
+        }
+        $directory = unpack('Noffset/Nlength', substr($header, 0x54, 8));
+        $fileSize = (int) filesize($rafPathname);
+        if ($directory['offset'] < 0x5C
+            || $directory['length'] < 4
+            || $directory['offset'] + $directory['length'] > $fileSize
+        ) {
+            fclose($source);
+
+            return false;
+        }
+        fseek($source, $directory['offset']);
+        if (fread($source, 2) !== "\xFF\xD8") { // JPEG SOI sanity check
+            fclose($source);
+
+            return false;
+        }
+        $target = @fopen($jpegPathname, 'wb');
+        if ($target === false) {
+            fclose($source);
+
+            return false;
+        }
+        fseek($source, $directory['offset']);
+        stream_copy_to_stream($source, $target, $directory['length']);
+        fclose($target);
+        fclose($source);
+
+        return true;
+    }
+
+
+
     private function processFile(SplFileInfo $file): bool {
         if (!$file->isFile()) {
             echo "Not a file." . PHP_EOL;
@@ -228,14 +276,21 @@
             $newFilenamePrefix = $dateTime->format(self::DATETIME_FORMAT);
         } else {
             if (preg_match('/\.heic$/i', $originalFilename)) {
-                $tmpHeicToJpgPathname = $file->getPath() . "/_camerafilesrename_heictojpeg_" . preg_replace('/\.heic$/i', '.jpeg', $originalFilename);
-                exec('magick convert ' . escapeshellarg($file->getRealPath()) . ' ' . escapeshellarg($tmpHeicToJpgPathname));
-                if (!file_exists($tmpHeicToJpgPathname)) {
-                    unset($tmpHeicToJpgPathname);
+                $tmpJpegPathname = $file->getPath() . "/_camerafilesrename_heictojpeg_" . preg_replace('/\.heic$/i', '.jpeg', $originalFilename);
+                exec('magick convert ' . escapeshellarg($file->getRealPath()) . ' ' . escapeshellarg($tmpJpegPathname));
+                if (!file_exists($tmpJpegPathname)) {
+                    unset($tmpJpegPathname);
+                }
+            } elseif (preg_match('/\.raf$/i', $originalFilename)) {
+                // PHP's EXIF reader cannot parse the RAF container; the EXIF lives in the
+                // embedded JPEG preview, which is extracted to a temp file to read it.
+                $tmpRafToJpgPathname = $file->getPath() . "/_camerafilesrename_raftojpeg_" . preg_replace('/\.raf$/i', '.jpeg', $originalFilename);
+                if ($this->extractRafEmbeddedJpeg($file->getRealPath(), $tmpRafToJpgPathname)) {
+                    $tmpJpegPathname = $tmpRafToJpgPathname;
                 }
             }
 
-            $exif = @exif_read_data($tmpHeicToJpgPathname ?? $file->getPathname()) ?: [];
+            $exif = @exif_read_data($tmpJpegPathname ?? $file->getPathname()) ?: [];
             //var_dump($exif);
             $dateTimeString = $exif['DateTimeOriginal'] ?? $exif['DateTime'] ?? null;
             $timestampString = $exif['FileDateTime'] ?? null;
@@ -246,15 +301,15 @@
             } elseif ($this->isICloudPlaceholder($file)) {
                 echo "iCloud file not fully downloaded, skipping." . PHP_EOL;
 
-                if (isset($tmpHeicToJpgPathname)) {
-                    unlink($tmpHeicToJpgPathname);
+                if (isset($tmpJpegPathname)) {
+                    unlink($tmpJpegPathname);
                 }
 
                 return false;
             }
 
-            if (isset($tmpHeicToJpgPathname)) {
-                unlink($tmpHeicToJpgPathname);
+            if (isset($tmpJpegPathname)) {
+                unlink($tmpJpegPathname);
             }
         }
         $newFilename = $newFilenamePrefix . '_' . $file->getSize() . '.' . strtolower($file->getExtension());

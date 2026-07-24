@@ -15,7 +15,7 @@
 $scriptPath = dirname(__DIR__) . '/camerafilesrename.php';
 $fixturesDir = __DIR__ . '/fixtures';
 
-$fixtureNames = ['exif.jpg', 'plain.jpg', 'image.raf', 'image_small.raf', 'tiny.raf', 'video.mov'];
+$fixtureNames = ['exif.jpg', 'exif.raf', 'plain.jpg', 'image.raf', 'image_small.raf', 'tiny.raf', 'video.mov'];
 foreach ($fixtureNames as $name) {
     if (!is_file("$fixturesDir/$name")) {
         exit("Missing fixture tests/fixtures/$name — run: php tests/generate_fixtures.php\n");
@@ -115,6 +115,7 @@ $withoutNewLogs = static fn(array $files): array => array_values(array_filter(
 // --- Expected names ----------------------------------------------------------
 
 $exifName = '20241102_153045_' . $fixtureSize('exif.jpg') . '.jpg';
+$rafExifName = '20241102_153045_' . $fixtureSize('exif.raf') . '.raf';
 $photoName = date('Ymd_His', MTIME_PHOTO) . '_' . $fixtureSize('plain.jpg') . '.jpg';
 $lowerName = date('Ymd_His', MTIME_LOWER) . '_' . $fixtureSize('plain.jpg') . '.jpg';
 $videoName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('video.mov') . '.mov';
@@ -137,6 +138,8 @@ copy("$fixturesDir/video.mov", "$workDir/MOV_0001.mov");                       /
 copy("$fixturesDir/video.mov", "$workDir/MOV_0002.mov");                       // same mtime, same size
 touch("$workDir/MOV_0001.mov", MTIME_VIDEO);
 touch("$workDir/MOV_0002.mov", MTIME_VIDEO);
+copy("$fixturesDir/exif.raf", "$workDir/FUJIFILM.RAF");                        // EXIF in embedded JPEG preview
+touch("$workDir/FUJIFILM.RAF", MTIME_VIDEO);                                   // wrong mtime: EXIF must win
 copy("$fixturesDir/image.raf", "$workDir/20241102153045_DSCF1234.RAF");        // previous naming scheme
 copy("$fixturesDir/image_small.raf", "$workDir/00000000_000000_12345.raf");    // zero prefix = re-process
 copy("$fixturesDir/tiny.raf", "$workDir/20241102_153045_99999.raf");           // already renamed
@@ -155,6 +158,7 @@ $check(in_array($videoName, $files1, true), "video named from mtime: $videoName"
 $check(in_array($videoName001, $files1, true), "duplicate .mov gets (001) suffix: $videoName001");
 $movLosers = array_intersect(['MOV_0001.mov', 'MOV_0002.mov'], $files1);
 $check(count($movLosers) === 0, 'same-second + same-size collision: no source .mov left unrenamed');
+$check(in_array($rafExifName, $files1, true), "RAF date read from embedded JPEG preview, not mtime: $rafExifName");
 $check(in_array($migratedName, $files1, true), "previous scheme re-renamed: $migratedName");
 $check(in_array($zeroName, $files1, true), "zero prefix stripped and re-processed: $zeroName");
 $check(in_array('20241102_153045_99999.raf', $files1, true), 'already-renamed file left untouched');
@@ -180,8 +184,8 @@ $files2 = $listFiles($workDir);
 $check($exitCode2 === 0, 'second directory run completes');
 $check($withoutNewLogs($files2) === $withoutNewLogs($files1), 'second directory run changes no file names');
 $check(
-    substr_count($output2, 'Already renamed.') === 6,
-    'second directory run skips all six dated files as already renamed'
+    substr_count($output2, 'Already renamed.') === 7,
+    'second directory run skips all seven dated files as already renamed'
 );
 
 // --- Run 3: file arguments -----------------------------------------------------
