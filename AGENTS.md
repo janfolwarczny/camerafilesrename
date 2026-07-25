@@ -22,6 +22,9 @@ php tests/run_tests.php                                             # framework-
   asserts directory/file-mixed-mode behavior. If fixtures are missing or need regenerating:
   `php tests/generate_fixtures.php` (requires `magick`; the suite itself does not).
 
+- `camerafilesrename-automator.sh` is the simple wrapper for Automator's **Run Shell Script**
+  action. It invokes the PHP script once with all selected files/folders passed as arguments.
+
 - Requires PHP 8.1+ with the `exif` extension.
 - Requires ImageMagick for `.heic` files. The script searches `PATH` and common macOS
   locations (`/opt/homebrew/bin/magick`, `/usr/local/bin/magick`, etc.), or the path in

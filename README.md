@@ -8,13 +8,13 @@ A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS[_
 
 - **PHP** 8.1+ with the `exif` extension
 - **ImageMagick** for `.heic` files — the script searches `PATH` and common macOS locations (`/opt/homebrew/bin/magick`, `/usr/local/bin/magick`, etc.), or the path in `CAMERAFILESRENAME_MAGICK`; it converts to a temp `_camerafilesrename_heictojpeg_*.jpeg` in the target dir to read EXIF, then deletes it
-- **macOS** (for the Automator Quick Action below; the script itself also runs on Windows and Linux)
+- **macOS** (for the Automator integration below; the script itself also runs on Windows and Linux)
 
 ---
 
 ## Usage
 
-Accepts any combination of directories and files, supports `--debug` and stdin fallback.
+Accepts any combination of directories and files, supports `--debug`, and stdin fallback.
 
 ```bash
 php camerafilesrename.php <directory|file> [<directory|file> ...]   # any combination
@@ -26,6 +26,8 @@ php tests/run_tests.php                                             # framework-
 ### Options
 
 - `--debug` — Writes all terminal output plus the original arguments and resolved paths to `_camerafilesrename_debug_YYYYMMDD_HHIISS.txt` in the first target directory.
+- `--progress` — Emits optional machine-readable per-file progress events for custom integrations.
+  The simple Automator shell wrapper does not use this option.
 
 ---
 
@@ -52,18 +54,15 @@ In the top-right panel of the workflow canvas, set:
 
 1. Search for **Run Shell Script** in the left sidebar.
 2. Drag it into the workflow canvas.
-3. In the action settings, set:
-   - **Shell:** `/bin/zsh`
-   - **Pass input:** `as arguments`
+3. Set **Shell** to `/bin/zsh` (or leave the default shell).
+4. Set **Pass input** to **as arguments**.
+5. Open [`camerafilesrename-automator.sh`](camerafilesrename-automator.sh) in a text editor.
+6. Change `PHP_SCRIPT` at the top if the path differs on your Mac.
+7. Copy the complete file into the **Run Shell Script** action.
 
-4. Paste the following script into the code box:
-
-```bash
-RESULT=$(/opt/homebrew/bin/php /Users/janfolwarczny/Work/camerafilesrename/camerafilesrename.php "$@" 2>&1)
-osascript -e "display dialog \"$RESULT\" with title \"Camera Files Rename\" buttons {\"OK\"} default button \"OK\""
-```
-
-> **Note:** Adjust the PHP path to match your system. Use `which php` in Terminal to find the correct path.
+The wrapper launches PHP once with the complete selection and preserves the PHP script's
+directory grouping and collision handling. The command output is shown in Automator's result
+area. This simple action does not provide per-file progress in Automator's menu-bar indicator.
 
 ### 4. Save the Quick Action
 

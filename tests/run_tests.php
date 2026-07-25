@@ -222,6 +222,15 @@ $check($exitCode2b === 0, 'historical zero-date name repair exits 0');
 $check(is_file("$historicalZeroDir/$exifName"), "historical zero-date name is rebuilt from EXIF: $exifName");
 $check(!is_file("$historicalZeroDir/$historicalZeroExifName"), 'historical zero-date source name is removed');
 
+$progressDir = $makeDir();
+copy("$fixturesDir/exif.jpg", "$progressDir/PROGRESS.JPG");
+
+echo "--- Run 2c: machine-readable progress protocol ---\n";
+[$output2c, $exitCode2c] = $runScript(['--progress', "$progressDir/PROGRESS.JPG"]);
+$check($exitCode2c === 0, 'progress protocol run exits 0');
+$check(str_contains($output2c, "__CAMERAFILESRENAME_PROGRESS__\tSTART\t1"), 'progress protocol reports total file count');
+$check(str_contains($output2c, "__CAMERAFILESRENAME_PROGRESS__\tITEM\t1\t1\t"), 'progress protocol reports completed file');
+
 // --- Run 3: file arguments -----------------------------------------------------
 
 $filesDir = $makeDir();

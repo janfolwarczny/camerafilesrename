@@ -11,6 +11,8 @@
 
     private const LOG_FILENAME_PATTERN = '/^_camerafilesrename_[0-9]{10}\.log$/i';
 
+    private const PROGRESS_PREFIX = '__CAMERAFILESRENAME_PROGRESS__';
+
     private const DATETIME_FORMAT = 'Ymd_His';
 
     /** @var SplFileInfo[] */
@@ -24,14 +26,21 @@
 
     private bool $debugEnabled = false;
 
+    private bool $progressEnabled = false;
+
+    private int $progressTotal = 0;
+
+    private int $progressCompleted = 0;
+
 
 
     public function __invoke(): void {
         global $argv;
         $arguments = array_slice($argv, 1);
         $this->debugEnabled = in_array('--debug', $arguments, true);
-        if ($this->debugEnabled) {
-            $arguments = array_values(array_diff($arguments, ['--debug']));
+        $this->progressEnabled = in_array('--progress', $arguments, true);
+        if ($this->debugEnabled || $this->progressEnabled) {
+            $arguments = array_values(array_diff($arguments, ['--debug', '--progress']));
         }
 
         $inputs = $arguments;
@@ -98,6 +107,7 @@
         foreach ($pathnames as $pathname) {
             $groups[dirname($pathname)][$pathname] = $pathname;
         }
+        $this->initializeProgress($groups);
         foreach ($groups as $groupPathnames) {
             $this->processGroup(array_values($groupPathnames));
         }
@@ -142,11 +152,13 @@
             }
 
             foreach ($this->files as $file) {
+                $isRegularFile = $file->isFile();
                 if ($this->processFile($file)) {
                     $this->renamedCount++;
                 } else {
                     $this->skippedCount++;
                 }
+                $this->reportProgress($file, $isRegularFile);
             }
 
             ksort($this->files);
@@ -160,6 +172,50 @@
 
     private function lowerFilenameExist(string $filename): bool {
         return array_key_exists(strtolower($filename), $this->files);
+    }
+
+
+
+    /**
+     * Emits optional machine-readable progress events for the Automator JXA wrapper.
+     * Normal CLI runs do not emit these lines.
+     *
+     * @param array<string, array<string, string>> $groups
+     */
+    private function initializeProgress(array $groups): void {
+        if (!$this->progressEnabled) {
+            return;
+        }
+
+        foreach ($groups as $groupPathnames) {
+            foreach ($groupPathnames as $pathname) {
+                if (is_file($pathname) && !preg_match(self::LOG_FILENAME_PATTERN, basename($pathname))) {
+                    $this->progressTotal++;
+                }
+            }
+        }
+
+        echo self::PROGRESS_PREFIX . "\tSTART\t" . $this->progressTotal . PHP_EOL;
+        fflush(STDOUT);
+    }
+
+
+
+    private function reportProgress(SplFileInfo $file, bool $isRegularFile): void {
+        if (!$this->progressEnabled || !$isRegularFile) {
+            return;
+        }
+
+        $this->progressCompleted++;
+        echo self::PROGRESS_PREFIX
+            . "\tITEM\t"
+            . $this->progressCompleted
+            . "\t"
+            . $this->progressTotal
+            . "\t"
+            . base64_encode($file->getFilename())
+            . PHP_EOL;
+        fflush(STDOUT);
     }
 
 
