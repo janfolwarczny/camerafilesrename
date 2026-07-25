@@ -15,6 +15,8 @@ if (!is_dir($fixturesDir)) {
 const EXIF_DATETIME_ORIGINAL = '2024:11:02 15:30:45';
 const EXIF_MAKE = 'FUJIFILM';
 const EXIF_MODEL = 'X-T5';
+const LEICA_MAKE = 'Leica Camera AG';
+const LEICA_MODEL = 'Leica Q3';
 
 /** Injects a minimal EXIF APP1 segment with date, make, and model into a baseline JPEG. */
 function injectExifData(string $jpegData, string $exifDateTime, string $make, string $model): string {
@@ -65,6 +67,13 @@ file_put_contents(
     $fixturesDir . '/exif.jpg',
     injectExifData(file_get_contents($baseJpgPathname), EXIF_DATETIME_ORIGINAL, EXIF_MAKE, EXIF_MODEL)
 );
+
+// leica.jpg: the normalized Make is LEICACAMERAAG and the normalized Model contains
+// LEICA, so the output should use LEICAQ3 without repeating the Make.
+file_put_contents(
+    $fixturesDir . '/leica.jpg',
+    injectExifData(file_get_contents($baseJpgPathname), EXIF_DATETIME_ORIGINAL, LEICA_MAKE, LEICA_MODEL)
+);
 unlink($baseJpgPathname);
 
 // --- RAF with embedded JPEG preview ---------------------------------------------
@@ -92,6 +101,11 @@ if (($exif['DateTimeOriginal'] ?? null) !== EXIF_DATETIME_ORIGINAL
     || ($exif['Model'] ?? null) !== EXIF_MODEL
 ) {
     exit("exif.jpg fixture is broken: DateTimeOriginal not readable.\n");
+}
+
+$leica = @exif_read_data($fixturesDir . '/leica.jpg') ?: [];
+if (($leica['Make'] ?? null) !== LEICA_MAKE || ($leica['Model'] ?? null) !== LEICA_MODEL) {
+    exit("leica.jpg fixture is broken: Make/Model not readable.\n");
 }
 
 $plain = @exif_read_data($fixturesDir . '/plain.jpg') ?: [];

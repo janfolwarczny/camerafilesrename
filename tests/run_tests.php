@@ -15,7 +15,7 @@
 $scriptPath = dirname(__DIR__) . '/camerafilesrename.php';
 $fixturesDir = __DIR__ . '/fixtures';
 
-$fixtureNames = ['exif.jpg', 'exif.raf', 'plain.jpg', 'image.raf', 'image_small.raf', 'tiny.raf', 'video.mov'];
+$fixtureNames = ['exif.jpg', 'exif.raf', 'leica.jpg', 'plain.jpg', 'image.raf', 'image_small.raf', 'tiny.raf', 'video.mov'];
 foreach ($fixtureNames as $name) {
     if (!is_file("$fixturesDir/$name")) {
         exit("Missing fixture tests/fixtures/$name — run: php tests/generate_fixtures.php\n");
@@ -117,6 +117,7 @@ $withoutNewLogs = static fn(array $files): array => array_values(array_filter(
 $cameraSuffix = '_FUJIFILMXT5';
 $exifName = '20241102_153045_' . $fixtureSize('exif.jpg') . $cameraSuffix . '.jpeg';
 $rafExifName = '20241102_153045_' . $fixtureSize('exif.raf') . $cameraSuffix . '.raf';
+$leicaName = '20241102_153045_' . $fixtureSize('leica.jpg') . '_LEICAQ3.jpeg';
 $photoName = date('Ymd_His', MTIME_PHOTO) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $lowerName = date('Ymd_His', MTIME_LOWER) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $videoName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('video.mov') . '.mov';
@@ -553,6 +554,16 @@ $check($exitCode12 === 0, 'changed-size formatted file exits 0');
 $check(is_file("$sizeChangedDir/$sizeChangedTargetName"), "changed-size file gets the current size: $sizeChangedTargetName");
 $check(!is_file("$sizeChangedDir/$sizeChangedSourceName"), 'changed-size old filename is replaced');
 
+// --- Run 13: Leica Camera Make is not repeated in the Model suffix ------------
+
+$leicaDir = $makeDir();
+copy("$fixturesDir/leica.jpg", "$leicaDir/LEICA.JPG");
+
+echo "--- Run 13: Leica Camera Make/Model normalization ---\n";
+[$output13, $exitCode13] = $runScript([$leicaDir]);
+$check($exitCode13 === 0, 'Leica Make/Model run exits 0');
+$check(is_file("$leicaDir/$leicaName"), "Leica Make is omitted when Model contains LEICA: $leicaName");
+
 // --- Summary -------------------------------------------------------------------
 
 if ($failures > 0) {
@@ -580,6 +591,7 @@ if ($failures > 0) {
     echo "run 11:\n$output11\n";
     echo "run 11b:\n$output11b\n";
     echo "run 12:\n$output12\n";
+    echo "run 13:\n$output13\n";
     echo "FAILED: $failures assertion(s)\n";
     exit(1);
 }

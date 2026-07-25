@@ -218,13 +218,14 @@
      * A partially populated EXIF record contributes whichever field is usable.
      */
     private function getCameraNameSuffix(array $exif): string {
-        $parts = [];
-        foreach (['Make', 'Model'] as $field) {
-            $component = $this->normalizeCameraName($exif[$field] ?? null);
-            if ($component !== null) {
-                $parts[] = $component;
-            }
+        $make = $this->normalizeCameraName($exif['Make'] ?? null);
+        $model = $this->normalizeCameraName($exif['Model'] ?? null);
+
+        if ($make === 'LEICACAMERAAG' && $model !== null && str_contains($model, 'LEICA')) {
+            return '_' . $model;
         }
+
+        $parts = array_values(array_filter([$make, $model], static fn(?string $part): bool => $part !== null));
 
         return $parts === [] ? '' : '_' . implode('', $parts);
     }
