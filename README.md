@@ -1,6 +1,6 @@
 # Camera Files Rename
 
-A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS_FILESIZE_MAKEMODEL.ext` (e.g. `20241102_153045_25165824_FUJIFILMXT5.raf`). It extracts EXIF/mtime datetime, usable EXIF camera make/model, and the raw byte size with a lowercased extension; `.jpg` output is normalized to `.jpeg`. Camera fields are uppercased, stripped to alphanumeric characters, and concatenated. Missing or unrecognizable make/model fields are omitted. Supports duplicate handling with `(001)`, `(002)` suffixes, concurrent execution safety via file locking, and debug mode.
+A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS[_IDENTITY]_FILESIZE_MAKEMODEL.ext` (for example, `20241102_153045_S798_79979520_LEICAQ3.dng`). It extracts EXIF/mtime datetime, an optional metadata identity, usable EXIF camera make/model, and the raw byte size with a lowercased extension; `.jpg` output is normalized to `.jpeg`. Camera fields are uppercased, stripped to alphanumeric characters, and concatenated. Missing or unrecognizable make/model fields are omitted. Supports duplicate handling with `(001)`, `(002)` suffixes, concurrent execution safety via file locking, and debug mode.
 
 ---
 
@@ -86,11 +86,13 @@ osascript -e "display dialog \"$RESULT\" with title \"Camera Files Rename\" butt
   fields are omitted. For Leica metadata, normalized Make `LEICACAMERAAG` is omitted when the
   normalized Model contains `LEICA` (for example, `Leica Camera AG` + `Leica Q3` becomes
   `LEICAQ3`). `.jpg` inputs are written with a `.jpeg` extension; `.jpg` remains accepted when
-  recognizing legacy renamed filenames.
-- **Date extraction:** EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always use file mtime. For `.raf` files, EXIF is read from the embedded JPEG preview, since PHP cannot parse the RAF container directly.
-- **Duplicate handling:** If two files have the same datetime, byte size, normalized camera suffix, and output extension, the first gets the plain name, duplicates get `(001)`, `(002)`… suffixes.
+  recognizing legacy renamed filenames. When available, an identity token is inserted after
+  the timestamp: `S` + sub-second time, `F` + Leica source frame number, `U` + EXIF
+  `ImageUniqueID`, or `X` + an XMP document/instance identifier.
+- **Date and identity extraction:** EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always use file mtime. Identity priority is `SubSecTimeOriginal`/`SubSecTime` → Leica source frame number → `ImageUniqueID` → XMP document ID. For `.raf` files, EXIF is read from the embedded JPEG preview, since PHP cannot parse the RAF container directly.
+- **Duplicate handling:** If two files still have the same datetime, identity (or no identity), byte size, normalized camera suffix, and output extension, the first gets the plain name, duplicates get `(001)`, `(002)`… suffixes. No content hash is calculated.
 - **Concurrency safety:** Per-directory `flock()` locking prevents race conditions when multiple Finder selections launch parallel instances.
-- **Idempotency:** A file is skipped only when its encoded byte size matches the current file and its camera suffix and extension are current. Changed-size files are reprocessed; formatted names without a camera suffix are also inspected for EXIF metadata, and legacy `.jpg` names are migrated to `.jpeg`.
+- **Idempotency:** A file is skipped only when its encoded byte size matches the current file and its camera/identity suffix and extension are current. Changed-size files are reprocessed; formatted names without a camera or identity suffix are inspected for metadata, and legacy `.jpg` names are migrated to `.jpeg`.
 - **iCloud placeholder guard (macOS only):** Files stored in iCloud Drive with "Optimize Mac Storage" enabled may exist as lightweight placeholders locally, where only a Quick Look preview is kept and the full EXIF data is unavailable. The script detects this in two ways: (1) `mdls kMDItemIsDownloaded` where supported, and (2) a disk-usage heuristic — if a photo file (> 100 KB) has no EXIF date and less than 8 KB is actually allocated on disk, it is skipped with a message instead of being renamed to a zero-date name.
 
 ---

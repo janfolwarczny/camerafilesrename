@@ -15,7 +15,20 @@
 $scriptPath = dirname(__DIR__) . '/camerafilesrename.php';
 $fixturesDir = __DIR__ . '/fixtures';
 
-$fixtureNames = ['exif.jpg', 'exif.raf', 'leica.jpg', 'plain.jpg', 'image.raf', 'image_small.raf', 'tiny.raf', 'video.mov'];
+$fixtureNames = [
+    'exif.jpg',
+    'exif.raf',
+    'leica.jpg',
+    'subsec.jpg',
+    'unique.jpg',
+    'leica_frame.jpg',
+    'xmp.jpg',
+    'plain.jpg',
+    'image.raf',
+    'image_small.raf',
+    'tiny.raf',
+    'video.mov',
+];
 foreach ($fixtureNames as $name) {
     if (!is_file("$fixturesDir/$name")) {
         exit("Missing fixture tests/fixtures/$name — run: php tests/generate_fixtures.php\n");
@@ -127,6 +140,10 @@ $photoName001 = preg_replace('/\.jpeg$/', '(001).jpeg', $photoName);
 $migratedName = '00000000_000000_' . $fixtureSize('image.raf') . '.raf';
 $zeroName = '00000000_000000_' . $fixtureSize('image_small.raf') . '.raf';
 $tinyName = '20241102_153045_' . $fixtureSize('tiny.raf') . '.raf';
+$subsecName = '20241102_153045_S128_' . $fixtureSize('subsec.jpg') . '_APPLEIPHONE7.jpeg';
+$uniqueName = '20241102_153045_UABCDEF0123456789_' . $fixtureSize('unique.jpg') . '_DJIFC220.jpeg';
+$leicaFrameName = '20241102_153045_F1021655_' . $fixtureSize('leica_frame.jpg') . '_LEICAQ3.jpeg';
+$xmpName = '20241102_153045_X1234567890ABCDEF_' . $fixtureSize('xmp.jpg') . '_APPLEIPHONE17.jpeg';
 
 // --- Run 1: directory mode, rename behavior ----------------------------------
 
@@ -564,6 +581,44 @@ echo "--- Run 13: Leica Camera Make/Model normalization ---\n";
 $check($exitCode13 === 0, 'Leica Make/Model run exits 0');
 $check(is_file("$leicaDir/$leicaName"), "Leica Make is omitted when Model contains LEICA: $leicaName");
 
+// --- Run 14: metadata identity priority and legacy migration -----------------
+
+$identityDir = $makeDir();
+copy("$fixturesDir/subsec.jpg", "$identityDir/SUBSEC.JPG");
+copy("$fixturesDir/unique.jpg", "$identityDir/UNIQUE.JPG");
+copy("$fixturesDir/leica_frame.jpg", "$identityDir/LEICA_FRAME.JPG");
+copy("$fixturesDir/xmp.jpg", "$identityDir/XMP.JPG");
+
+echo "--- Run 14: metadata identity priority ---\n";
+[$output14, $exitCode14] = $runScript([$identityDir]);
+$files14 = $listFiles($identityDir);
+$check($exitCode14 === 0, 'metadata identity run exits 0');
+$check(in_array($subsecName, $files14, true), 'SubSecTimeOriginal is preferred over ImageUniqueID');
+$check(in_array($uniqueName, $files14, true), 'ImageUniqueID is used when sub-second time is absent');
+$check(in_array($leicaFrameName, $files14, true), 'Leica source frame number is used when EXIF IDs are absent');
+$check(in_array($xmpName, $files14, true), 'XMP document ID is used as the last metadata fallback');
+$check(
+    array_intersect(['SUBSEC.JPG', 'UNIQUE.JPG', 'LEICA_FRAME.JPG', 'XMP.JPG'], $files14) === [],
+    'metadata identity run removes all source files'
+);
+
+[$output14b, $exitCode14b] = $runScript([$identityDir]);
+$files14b = $listFiles($identityDir);
+$check($exitCode14b === 0, 'metadata identity idempotency run exits 0');
+$check($files14b === $files14, 'metadata identity names remain stable on the next run');
+$check(substr_count($output14b, 'Already renamed.') === 4, 'metadata identity files are skipped on the next run');
+
+$identityMigrationDir = $makeDir();
+$legacyIdentityName = '20241102_153045_' . $fixtureSize('subsec.jpg') . '_APPLEIPHONE7.jpg';
+copy("$fixturesDir/subsec.jpg", "$identityMigrationDir/$legacyIdentityName");
+
+echo "--- Run 14b: add metadata identity to an existing formatted name ---\n";
+[$output14c, $exitCode14c] = $runScript([$identityMigrationDir]);
+$files14c = $listFiles($identityMigrationDir);
+$check($exitCode14c === 0, 'formatted name without identity exits 0');
+$check(is_file("$identityMigrationDir/$subsecName"), "formatted name gets metadata identity: $subsecName");
+$check(!is_file("$identityMigrationDir/$legacyIdentityName"), 'formatted name without identity is replaced');
+
 // --- Summary -------------------------------------------------------------------
 
 if ($failures > 0) {
@@ -592,6 +647,9 @@ if ($failures > 0) {
     echo "run 11b:\n$output11b\n";
     echo "run 12:\n$output12\n";
     echo "run 13:\n$output13\n";
+    echo "run 14:\n$output14\n";
+    echo "run 14b:\n$output14b\n";
+    echo "run 14c:\n$output14c\n";
     echo "FAILED: $failures assertion(s)\n";
     exit(1);
 }

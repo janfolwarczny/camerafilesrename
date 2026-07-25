@@ -17,9 +17,23 @@ const EXIF_MAKE = 'FUJIFILM';
 const EXIF_MODEL = 'X-T5';
 const LEICA_MAKE = 'Leica Camera AG';
 const LEICA_MODEL = 'Leica Q3';
+const IDENTITY_DATETIME = '2024:11:02 15:30:45';
+const IDENTITY_SUBSECOND = '128';
+const IDENTITY_UNIQUE_ID = 'ABCDEF0123456789';
+const IDENTITY_XMP_ID = '1234567890ABCDEF';
 
-/** Injects a minimal EXIF APP1 segment with date, make, and model into a baseline JPEG. */
-function injectExifData(string $jpegData, string $exifDateTime, string $make, string $model): string {
+/**
+ * Injects a minimal EXIF APP1 segment with date, make, model, and optional identity
+ * fields into a baseline JPEG.
+ */
+function injectExifData(
+    string $jpegData,
+    string $exifDateTime,
+    string $make,
+    string $model,
+    ?string $subSecTimeOriginal = null,
+    ?string $imageUniqueId = null
+): string {
     if (substr($jpegData, 0, 2) !== "\xFF\xD8") {
         exit("Base image is not a JPEG.\n");
     }
@@ -30,23 +44,64 @@ function injectExifData(string $jpegData, string $exifDateTime, string $make, st
     $ifd0Offset = 8;
     $ifd0EntryCount = 3;
     $exifIfdOffset = $ifd0Offset + 2 + ($ifd0EntryCount * 12) + 4;
-    $exifIfdSize = 2 + 12 + 4;
+    $exifEntries = [
+        [0x9003, $dateTimeString],
+    ];
+    if ($subSecTimeOriginal !== null) {
+        $exifEntries[] = [0x9291, $subSecTimeOriginal . "\0"];
+    }
+    if ($imageUniqueId !== null) {
+        $exifEntries[] = [0xA420, $imageUniqueId . "\0"];
+    }
+
+    $exifIfdSize = 2 + (count($exifEntries) * 12) + 4;
     $dataOffset = $exifIfdOffset + $exifIfdSize;
     $makeOffset = $dataOffset;
     $modelOffset = $makeOffset + strlen($makeString);
-    $dateTimeOffset = $modelOffset + strlen($modelString);
+    $exifDataOffset = $modelOffset + strlen($modelString);
+    $exifData = '';
+    $exifIfd = pack('v', count($exifEntries));
+    foreach ($exifEntries as [$tag, $value]) {
+        $exifIfd .= pack('v', $tag) . pack('v', 2) . pack('V', strlen($value));
+        if (strlen($value) <= 4) {
+            $exifIfd .= str_pad($value, 4, "\0");
+        } else {
+            $valueOffset = $exifDataOffset + strlen($exifData);
+            $exifIfd .= pack('V', $valueOffset);
+            $exifData .= $value;
+        }
+    }
+    $exifIfd .= pack('V', 0);
+    $makeValue = strlen($makeString) <= 4
+        ? str_pad($makeString, 4, "\0")
+        : pack('V', $makeOffset);
+    $modelValue = strlen($modelString) <= 4
+        ? str_pad($modelString, 4, "\0")
+        : pack('V', $modelOffset);
 
     $tiff = 'II' . pack('v', 42) . pack('V', $ifd0Offset)
         . pack('v', $ifd0EntryCount)
-        . pack('v', 0x010F) . pack('v', 2) . pack('V', strlen($makeString)) . pack('V', $makeOffset)
-        . pack('v', 0x0110) . pack('v', 2) . pack('V', strlen($modelString)) . pack('V', $modelOffset)
+        . pack('v', 0x010F) . pack('v', 2) . pack('V', strlen($makeString)) . $makeValue
+        . pack('v', 0x0110) . pack('v', 2) . pack('V', strlen($modelString)) . $modelValue
         . pack('v', 0x8769) . pack('v', 4) . pack('V', 1) . pack('V', $exifIfdOffset)
         . pack('V', 0)
-        . pack('v', 1)
-        . pack('v', 0x9003) . pack('v', 2) . pack('V', strlen($dateTimeString)) . pack('V', $dateTimeOffset)
-        . pack('V', 0)
-        . $makeString . $modelString . $dateTimeString;
+        . $exifIfd
+        . $makeString . $modelString . $exifData;
     $app1 = "\xFF\xE1" . pack('n', strlen($tiff) + 8) . "Exif\0\0" . $tiff;
+
+    return "\xFF\xD8" . $app1 . substr($jpegData, 2);
+}
+
+/** Adds a minimal XMP APP1 segment containing a document identifier. */
+function injectXmpData(string $jpegData, string $documentId): string {
+    $xmp = '<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        . '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        . '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        . '<rdf:Description xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/"'
+        . ' xmpMM:OriginalDocumentID="' . $documentId . '"/>'
+        . '</rdf:RDF></x:xmpmeta><?xpacket end="w"?>';
+    $payload = "http://ns.adobe.com/xap/1.0/\0" . $xmp;
+    $app1 = "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload;
 
     return "\xFF\xD8" . $app1 . substr($jpegData, 2);
 }
@@ -73,6 +128,42 @@ file_put_contents(
 file_put_contents(
     $fixturesDir . '/leica.jpg',
     injectExifData(file_get_contents($baseJpgPathname), EXIF_DATETIME_ORIGINAL, LEICA_MAKE, LEICA_MODEL)
+);
+
+// Identity fixtures cover the priority order without requiring large real-camera files.
+file_put_contents(
+    $fixturesDir . '/subsec.jpg',
+    injectExifData(
+        file_get_contents($baseJpgPathname),
+        IDENTITY_DATETIME,
+        'Apple',
+        'iPhone 7',
+        IDENTITY_SUBSECOND,
+        IDENTITY_UNIQUE_ID
+    )
+);
+file_put_contents(
+    $fixturesDir . '/unique.jpg',
+    injectExifData(
+        file_get_contents($baseJpgPathname),
+        IDENTITY_DATETIME,
+        'DJI',
+        'FC220',
+        null,
+        IDENTITY_UNIQUE_ID
+    )
+);
+file_put_contents(
+    $fixturesDir . '/leica_frame.jpg',
+    injectExifData(file_get_contents($baseJpgPathname), IDENTITY_DATETIME, LEICA_MAKE, LEICA_MODEL)
+        . "L1021655.DNG\0"
+);
+file_put_contents(
+    $fixturesDir . '/xmp.jpg',
+    injectXmpData(
+        injectExifData(file_get_contents($baseJpgPathname), IDENTITY_DATETIME, 'Apple', 'iPhone 17'),
+        IDENTITY_XMP_ID
+    )
 );
 unlink($baseJpgPathname);
 
@@ -106,6 +197,25 @@ if (($exif['DateTimeOriginal'] ?? null) !== EXIF_DATETIME_ORIGINAL
 $leica = @exif_read_data($fixturesDir . '/leica.jpg') ?: [];
 if (($leica['Make'] ?? null) !== LEICA_MAKE || ($leica['Model'] ?? null) !== LEICA_MODEL) {
     exit("leica.jpg fixture is broken: Make/Model not readable.\n");
+}
+
+$subsec = @exif_read_data($fixturesDir . '/subsec.jpg') ?: [];
+if (($subsec['SubSecTimeOriginal'] ?? null) !== IDENTITY_SUBSECOND
+    || ($subsec['ImageUniqueID'] ?? null) !== IDENTITY_UNIQUE_ID
+) {
+    exit("subsec.jpg fixture is broken: identity fields not readable.\n");
+}
+
+$unique = @exif_read_data($fixturesDir . '/unique.jpg') ?: [];
+if (($unique['ImageUniqueID'] ?? null) !== IDENTITY_UNIQUE_ID
+    || isset($unique['SubSecTimeOriginal'])
+) {
+    exit("unique.jpg fixture is broken: expected only ImageUniqueID.\n");
+}
+
+$xmp = file_get_contents($fixturesDir . '/xmp.jpg');
+if ($xmp === false || !str_contains($xmp, 'xmpMM:OriginalDocumentID="' . IDENTITY_XMP_ID . '"')) {
+    exit("xmp.jpg fixture is broken: XMP document ID not embedded.\n");
 }
 
 $plain = @exif_read_data($fixturesDir . '/plain.jpg') ?: [];
