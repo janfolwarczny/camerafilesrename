@@ -4,6 +4,7 @@
 .vscode
 **/*.local
 **/*.local.*
+._camerafilesrename.lock
 
 # Exceptions
 !.gitignore
