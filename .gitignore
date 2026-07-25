@@ -5,6 +5,7 @@
 **/*.local
 **/*.local.*
 ._camerafilesrename.lock
+/var
 
 # Exceptions
 !.gitignore
