@@ -18,6 +18,9 @@
     /** @var SplFileInfo[] */
     private array $files = [];
 
+    /** @var array<string, bool> */
+    private array $handledSidecars = [];
+
     private int $runTimestamp;
 
     private int $renamedCount = 0;
@@ -136,6 +139,7 @@
 
         try {
             $this->files = [];
+            $this->handledSidecars = [];
             foreach ($pathnames as $pathname) {
                 $file = new SplFileInfo($pathname);
                 $filename = $file->getFilename();
@@ -151,8 +155,25 @@
                 $this->files[$lowerFilename] = $file;
             }
 
-            foreach ($this->files as $file) {
-                $isRegularFile = $file->isFile();
+            // Process image/video files before sidecars so a sidecar selected as part of a
+            // directory is moved with its image instead of being reported as unsupported first.
+            $groupFiles = array_values($this->files);
+            $imageFiles = array_values(array_filter(
+                $groupFiles,
+                static fn(SplFileInfo $file): bool => strtolower($file->getExtension()) !== 'xmp'
+            ));
+            $sidecarFiles = array_values(array_filter(
+                $groupFiles,
+                static fn(SplFileInfo $file): bool => strtolower($file->getExtension()) === 'xmp'
+            ));
+            $groupFiles = array_merge($imageFiles, $sidecarFiles);
+            $regularFileFlags = array_map(
+                static fn(SplFileInfo $file): bool => $file->isFile(),
+                $groupFiles
+            );
+
+            foreach ($groupFiles as $index => $file) {
+                $isRegularFile = $regularFileFlags[$index];
                 if ($this->processFile($file)) {
                     $this->renamedCount++;
                 } else {
@@ -172,6 +193,94 @@
 
     private function lowerFilenameExist(string $filename): bool {
         return array_key_exists(strtolower($filename), $this->files);
+    }
+
+
+
+    private function isHandledSidecar(SplFileInfo $file): bool {
+        return $this->handledSidecars[strtolower($file->getPathname())] ?? false;
+    }
+
+
+
+    /**
+     * Finds an exact case-insensitive filename in the current group or on disk.
+     * File-list mode intentionally indexes only selected files, so the directory
+     * scan is needed to find an unselected sidecar and to guard its target.
+     */
+    private function findFileByLowerFilename(string $directory, string $filename): ?SplFileInfo {
+        $lowerFilename = strtolower($filename);
+        if (array_key_exists($lowerFilename, $this->files)) {
+            $file = $this->files[$lowerFilename];
+            if ($file->isFile()) {
+                return $file;
+            }
+        }
+
+        foreach (new FilesystemIterator($directory, FilesystemIterator::SKIP_DOTS) as $file) {
+            if ($file->isFile() && strtolower($file->getFilename()) === $lowerFilename) {
+                return $file;
+            }
+        }
+
+        return null;
+    }
+
+
+
+    private function findXmpSidecar(SplFileInfo $image): ?SplFileInfo {
+        $imageStem = pathinfo($image->getFilename(), PATHINFO_FILENAME);
+        $sidecarFilename = $imageStem . '.xmp';
+
+        return $this->findFileByLowerFilename($image->getPath(), $sidecarFilename);
+    }
+
+
+
+    /**
+     * Renames the image's XMP sidecar to the same generated basename.
+     * Returns true only when a sidecar was moved; an already matching sidecar
+     * is marked handled but does not count as a rename.
+     */
+    private function renameXmpSidecar(SplFileInfo $image, string $newImageFilename): bool {
+        $sidecar = $this->findXmpSidecar($image);
+        if ($sidecar === null) {
+            return false;
+        }
+
+        $sourcePathname = $sidecar->getPathname();
+        $sourceRealPath = $sidecar->getRealPath();
+        $targetFilename = pathinfo($newImageFilename, PATHINFO_FILENAME) . '.xmp';
+        $targetPathname = $image->getPath() . '/' . $targetFilename;
+        $existingTarget = $this->findFileByLowerFilename($image->getPath(), $targetFilename);
+
+        if ($existingTarget !== null) {
+            $existingRealPath = $existingTarget->getRealPath();
+            if ($sourceRealPath !== false && $existingRealPath === $sourceRealPath) {
+                $this->handledSidecars[strtolower($sourcePathname)] = true;
+
+                return false;
+            }
+
+            $message = "Error: New sidecar filename $targetFilename for {$image->getFilename()} already exists." . PHP_EOL;
+            /** @noinspection ForgottenDebugOutputInspection */
+            error_log($image->getFilename() . ' → ' . $message, 3, $image->getPath() . '/_camerafilesrename_' . $this->runTimestamp . '.log');
+            echo $message;
+
+            return false;
+        }
+
+        if ($sourceRealPath === false || !rename($sourceRealPath, $targetPathname)) {
+            echo "Error: Could not rename sidecar {$sidecar->getFilename()}." . PHP_EOL;
+
+            return false;
+        }
+
+        $this->handledSidecars[strtolower($sourcePathname)] = true;
+        $this->files[strtolower($targetFilename)] = $sidecar;
+        echo $sourcePathname . " → $targetPathname" . PHP_EOL;
+
+        return true;
     }
 
 
@@ -613,6 +722,12 @@
 
 
     private function processFile(SplFileInfo $file): bool {
+        if ($this->isHandledSidecar($file)) {
+            echo $file->getFilename() . " → Sidecar already handled with image." . PHP_EOL;
+
+            return false;
+        }
+
         if (!$file->isFile()) {
             echo "Not a file." . PHP_EOL;
 
@@ -657,7 +772,7 @@
         ) {
             echo "Already renamed." . PHP_EOL;
 
-            return false;
+            return $this->renameXmpSidecar($file, $file->getFilename());
         }
 
         $cameraNameSuffix = '';
@@ -747,7 +862,7 @@
             if ($cameraIsCurrent && $identityIsCurrent) {
                 echo "Already renamed." . PHP_EOL;
 
-                return false;
+                return $this->renameXmpSidecar($file, $file->getFilename());
             }
         }
 
@@ -783,6 +898,8 @@
         rename($file->getRealPath(), $newFilePath);
         $this->files[strtolower($newFilename)] = $file;
         echo $file->getRealPath() . " → $newFilePath" . PHP_EOL;
+
+        $this->renameXmpSidecar($file, $newFilename);
 
         return true;
     }

@@ -642,6 +642,80 @@ $check($exitCode14c === 0, 'formatted name without identity exits 0');
 $check(is_file("$identityMigrationDir/$subsecName"), "formatted name gets metadata identity: $subsecName");
 $check(!is_file("$identityMigrationDir/$legacyIdentityName"), 'formatted name without identity is replaced');
 
+// --- Run 15: XMP sidecar follows the image -----------------------------------
+
+$sidecarName = preg_replace('/\.jpeg$/', '.xmp', $exifName);
+$sidecarContent = "sidecar metadata\n";
+$sidecarDir = $makeDir();
+copy("$fixturesDir/exif.jpg", "$sidecarDir/SIDECAR.JPG");
+file_put_contents("$sidecarDir/SIDECAR.XMP", $sidecarContent);
+
+echo "--- Run 15: XMP sidecar follows the image ---\n";
+[$output15, $exitCode15] = $runScript([$sidecarDir]);
+$files15 = $listFiles($sidecarDir);
+$check($exitCode15 === 0, 'sidecar directory run exits 0');
+$check(is_file("$sidecarDir/$exifName"), "image with sidecar is renamed: $exifName");
+$check(is_file("$sidecarDir/$sidecarName"), "uppercase .xmp sidecar follows image: $sidecarName");
+$check(!is_file("$sidecarDir/SIDECAR.JPG") && !is_file("$sidecarDir/SIDECAR.XMP"), 'original image and sidecar names are removed');
+$check(file_get_contents("$sidecarDir/$sidecarName") === $sidecarContent, 'sidecar contents are preserved');
+$check(!str_contains($output15, 'Not matching original filename.'), 'handled sidecar is not reported as unsupported');
+
+[$output15b, $exitCode15b] = $runScript([$sidecarDir]);
+$check($exitCode15b === 0, 'sidecar idempotency run exits 0');
+$check($listFiles($sidecarDir) === $files15, 'image and sidecar names remain stable on the next run');
+$check(substr_count($output15b, 'Already renamed.') === 1, 'image with current sidecar is skipped on the next run');
+
+// A sidecar need not be included in file-list mode; the image's directory is
+// searched for its matching companion.
+$sidecarFileDir = $makeDir();
+copy("$fixturesDir/exif.jpg", "$sidecarFileDir/SINGLE.JPG");
+file_put_contents("$sidecarFileDir/SINGLE.xmp", $sidecarContent);
+
+echo "--- Run 15b: file-list mode discovers unselected sidecar ---\n";
+[$output15c, $exitCode15c] = $runScript(["$sidecarFileDir/SINGLE.JPG"]);
+$check($exitCode15c === 0, 'file-list sidecar run exits 0');
+$check(is_file("$sidecarFileDir/$exifName") && is_file("$sidecarFileDir/$sidecarName"), 'unselected sidecar is renamed with its image');
+$check(!is_file("$sidecarFileDir/SINGLE.xmp"), 'unselected original sidecar name is removed');
+
+// Explicitly selected image/sidecar pairs also retain matching collision suffixes.
+$sidecarCollisionDir = $makeDir();
+$firstSidecarContent = "first sidecar\n";
+$secondSidecarContent = "second sidecar\n";
+copy("$fixturesDir/exif.jpg", "$sidecarCollisionDir/FIRST.JPG");
+copy("$fixturesDir/exif.jpg", "$sidecarCollisionDir/SECOND.JPG");
+file_put_contents("$sidecarCollisionDir/FIRST.XMP", $firstSidecarContent);
+file_put_contents("$sidecarCollisionDir/SECOND.xmp", $secondSidecarContent);
+$sidecarName001 = preg_replace('/\.xmp$/', '(001).xmp', $sidecarName);
+
+echo "--- Run 15c: selected sidecar collision pairing ---\n";
+[$output15d, $exitCode15d] = $runScript([
+    "$sidecarCollisionDir/FIRST.XMP",
+    "$sidecarCollisionDir/SECOND.JPG",
+    "$sidecarCollisionDir/FIRST.JPG",
+    "$sidecarCollisionDir/SECOND.xmp",
+]);
+$check($exitCode15d === 0, 'selected image/sidecar collision run exits 0');
+$check(
+    is_file("$sidecarCollisionDir/$exifName") && is_file("$sidecarCollisionDir/$sidecarName001"),
+    'colliding images and sidecars receive matching generated names'
+);
+$check(
+    !is_file("$sidecarCollisionDir/FIRST.JPG")
+        && !is_file("$sidecarCollisionDir/SECOND.JPG")
+        && !is_file("$sidecarCollisionDir/FIRST.XMP")
+        && !is_file("$sidecarCollisionDir/SECOND.xmp"),
+    'selected image/sidecar collision leaves no original names'
+);
+$renamedSidecarContents = [
+    file_get_contents("$sidecarCollisionDir/$sidecarName"),
+    file_get_contents("$sidecarCollisionDir/$sidecarName001"),
+];
+sort($renamedSidecarContents);
+$expectedSidecarContents = [$firstSidecarContent, $secondSidecarContent];
+sort($expectedSidecarContents);
+$check($renamedSidecarContents === $expectedSidecarContents, 'collision sidecar contents stay paired and intact');
+$check(!str_contains($output15d, 'Not matching original filename.'), 'explicitly selected sidecars are not processed separately');
+
 // --- Summary -------------------------------------------------------------------
 
 if ($failures > 0) {
@@ -673,6 +747,10 @@ if ($failures > 0) {
     echo "run 14:\n$output14\n";
     echo "run 14b:\n$output14b\n";
     echo "run 14c:\n$output14c\n";
+    echo "run 15:\n$output15\n";
+    echo "run 15b:\n$output15b\n";
+    echo "run 15c:\n$output15c\n";
+    echo "run 15d:\n$output15d\n";
     echo "FAILED: $failures assertion(s)\n";
     exit(1);
 }

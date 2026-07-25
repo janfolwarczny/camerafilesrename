@@ -55,6 +55,9 @@ php tests/run_tests.php                                             # framework-
   `Leica Q3` becomes `LEICAQ3`.
 - `.jpg` inputs are renamed with a `.jpeg` extension. The unified renamed-file pattern accepts
   both `.jpg` and `.jpeg` so legacy `.jpg` names can be migrated to `.jpeg`.
+- A matching `.xmp` sidecar is found case-insensitively by the image stem and renamed to the
+  generated image basename with a lowercase `.xmp` extension. This also works when only the
+  image is selected in file-list mode; an already-handled sidecar is skipped on the same run.
 - The single `RENAMED_FILENAME_PATTERN` recognizes the date, optional identity token, byte-size,
   optional alphanumeric camera suffix, optional `(001)` collision suffix, and supported extension.
   A file is skipped as "Already renamed" only when its encoded size matches the current byte size
