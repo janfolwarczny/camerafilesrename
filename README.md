@@ -7,7 +7,7 @@ A single-file PHP CLI tool that batch-renames camera files to `YYYYMMDD_HHIISS[_
 ## Requirements
 
 - **PHP** 8.1+ with the `exif` extension
-- **ImageMagick** (`magick` on PATH) for `.heic` files — it converts to a temp `_camerafilesrename_heictojpeg_*.jpeg` in the target dir to read EXIF, then deletes it
+- **ImageMagick** for `.heic` files — the script searches `PATH` and common macOS locations (`/opt/homebrew/bin/magick`, `/usr/local/bin/magick`, etc.), or the path in `CAMERAFILESRENAME_MAGICK`; it converts to a temp `_camerafilesrename_heictojpeg_*.jpeg` in the target dir to read EXIF, then deletes it
 - **macOS** (for the Automator Quick Action below; the script itself also runs on Windows and Linux)
 
 ---

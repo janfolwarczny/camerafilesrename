@@ -208,6 +208,20 @@ $check(
     'second directory run skips all seven dated files as already renamed'
 );
 
+// A previous run may have produced a zero-date formatted name before metadata
+// support was available. It must be treated as a migration candidate and
+// rebuilt from the file's current EXIF data.
+$historicalZeroDir = $makeDir();
+$historicalZeroExifName = '00000000_000000_' . $fixtureSize('exif.jpg') . '.jpg';
+copy("$fixturesDir/exif.jpg", "$historicalZeroDir/$historicalZeroExifName");
+
+echo "--- Run 2b: repair historical zero-date name ---\n";
+[$output2b, $exitCode2b] = $runScript([$historicalZeroDir]);
+$files2b = $listFiles($historicalZeroDir);
+$check($exitCode2b === 0, 'historical zero-date name repair exits 0');
+$check(is_file("$historicalZeroDir/$exifName"), "historical zero-date name is rebuilt from EXIF: $exifName");
+$check(!is_file("$historicalZeroDir/$historicalZeroExifName"), 'historical zero-date source name is removed');
+
 // --- Run 3: file arguments -----------------------------------------------------
 
 $filesDir = $makeDir();

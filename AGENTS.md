@@ -23,8 +23,11 @@ php tests/run_tests.php                                             # framework-
   `php tests/generate_fixtures.php` (requires `magick`; the suite itself does not).
 
 - Requires PHP 8.1+ with the `exif` extension.
-- Requires ImageMagick (`magick` on PATH) for `.heic` files: it converts to a temp
-  `_camerafilesrename_heictojpeg_*.jpeg` in the target dir to read EXIF, then deletes it.
+- Requires ImageMagick for `.heic` files. The script searches `PATH` and common macOS
+  locations (`/opt/homebrew/bin/magick`, `/usr/local/bin/magick`, etc.), or the path in
+  `CAMERAFILESRENAME_MAGICK`; it converts to a temp `_camerafilesrename_heictojpeg_*.jpeg`
+  in the target dir to read EXIF, then deletes it. If ImageMagick is unavailable, the HEIC is
+  left unchanged with a clear message.
 - The script renames files in place and is non-recursive. Never "test" it against a real photo
   directory; use a throwaway dir with copies.
 

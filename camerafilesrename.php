@@ -435,6 +435,47 @@
 
 
 
+    /**
+     * Finds ImageMagick even when the script is launched with a minimal PATH,
+     * as can happen from Finder, Automator, or a Quick Action on macOS.
+     */
+    private function findImageMagickCommand(): ?string {
+        $candidates = [];
+        $configuredPath = getenv('CAMERAFILESRENAME_MAGICK');
+        if (is_string($configuredPath) && $configuredPath !== '') {
+            $candidates[] = $configuredPath;
+        }
+
+        $path = getenv('PATH');
+        if (is_string($path)) {
+            foreach (explode(PATH_SEPARATOR, $path) as $directory) {
+                if ($directory === '') {
+                    $directory = getcwd() ?: '.';
+                }
+                $candidates[] = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'magick';
+            }
+        }
+
+        // Homebrew's default locations on Apple Silicon and Intel macOS,
+        // plus MacPorts and the conventional Unix location.
+        $candidates = array_merge($candidates, [
+            '/opt/homebrew/bin/magick',
+            '/usr/local/bin/magick',
+            '/opt/local/bin/magick',
+            '/usr/bin/magick',
+        ]);
+
+        foreach (array_unique($candidates) as $candidate) {
+            if (is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+
+
     private function isICloudPlaceholder(SplFileInfo $file): bool {
         if (PHP_OS_FAMILY !== 'Darwin') {
             return false;
@@ -573,9 +614,27 @@
             $tmpJpegPathname = null;
             if (preg_match('/\.heic$/i', $originalFilename)) {
                 $tmpJpegPathname = $file->getPath() . "/_camerafilesrename_heictojpeg_" . preg_replace('/\.heic$/i', '.jpeg', $originalFilename);
-                exec('magick convert ' . escapeshellarg($file->getRealPath()) . ' ' . escapeshellarg($tmpJpegPathname));
-                if (!file_exists($tmpJpegPathname)) {
-                    $tmpJpegPathname = null;
+                $magickCommand = $this->findImageMagickCommand();
+                if ($magickCommand === null) {
+                    echo "ImageMagick (magick) not found; leaving the HEIC file unchanged." . PHP_EOL;
+
+                    return false;
+                }
+                @unlink($tmpJpegPathname);
+                $conversionOutput = [];
+                $conversionExitCode = 1;
+                exec(
+                    escapeshellarg($magickCommand) . ' '
+                    . escapeshellarg($file->getRealPath()) . ' '
+                    . escapeshellarg($tmpJpegPathname) . ' 2>&1',
+                    $conversionOutput,
+                    $conversionExitCode
+                );
+                if ($conversionExitCode !== 0 || !is_file($tmpJpegPathname)) {
+                    @unlink($tmpJpegPathname);
+                    echo "ImageMagick could not convert the HEIC file; leaving it unchanged." . PHP_EOL;
+
+                    return false;
                 }
             } elseif (preg_match('/\.raf$/i', $originalFilename)) {
                 // PHP's EXIF reader cannot parse the RAF container; the EXIF lives in the
