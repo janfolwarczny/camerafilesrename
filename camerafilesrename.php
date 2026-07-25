@@ -3,7 +3,7 @@
 
 (new class() {
 
-    private const RENAMED_FILENAME_PATTERN = '/^[0-9]{8}_[0-9]{6}(?:_(?<identity>S[0-9]{3,9}|F[0-9]+|U[A-Z0-9]+|X[A-Z0-9]+))?_(?<size>[0-9]+)(?:_(?<camera>[A-Z0-9]+))?(\([0-9]{3}\))?\.(?<extension>dng|jpg|jpeg|heic|raf|mov|mp4)$/i';
+    private const RENAMED_FILENAME_PATTERN = '/^[0-9]{8}_[0-9]{6}(?:_(?<identity>S[0-9]{3,9}|F[0-9]+|U[A-Z0-9]+|X[A-Z0-9]+))?_(?<size>[0-9]+)(?:_(?<camera>(?!DUP[0-9]{3}\.)[A-Z0-9]+))?(?:_DUP[0-9]{3})?\.(?<extension>dng|jpg|jpeg|heic|raf|mov|mp4)$/i';
 
     private const ORIGINAL_FILENAME_PATTERN = '/^[A-Z0-9_\-]+(\([0-9]{3}\))?( [0-9]+)?\.(dng|jpg|jpeg|raf|heic|mov|mp4)$/i';
 
@@ -887,9 +887,9 @@
                 return false;
             }
 
-            $suffix = 1;
+            $suffix = 0;
             do {
-                $newFilename = sprintf('%s(%03d).%s', $baseName, $suffix, $outputExtension);
+                $newFilename = sprintf('%s_DUP%03d.%s', $baseName, $suffix, $outputExtension);
                 $newFilePath = $file->getPath() . '/' . $newFilename;
                 $suffix++;
             } while ($this->lowerFilenameExist($newFilename) || file_exists($newFilePath));

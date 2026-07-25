@@ -59,7 +59,7 @@ php tests/run_tests.php                                             # framework-
   generated image basename with a lowercase `.xmp` extension. This also works when only the
   image is selected in file-list mode; an already-handled sidecar is skipped on the same run.
 - The single `RENAMED_FILENAME_PATTERN` recognizes the date, optional identity token, byte-size,
-  optional alphanumeric camera suffix, optional `(001)` collision suffix, and supported extension.
+  optional alphanumeric camera suffix, optional `_DUP000` collision suffix, and supported extension.
   A file is skipped as "Already renamed" only when its encoded size matches the current byte size
   and its camera/identity/extension form is current. A changed byte size is reprocessed, including
   for files that already have a MakeModel suffix. A date/size name without a camera or identity
@@ -77,7 +77,7 @@ php tests/run_tests.php                                             # framework-
   and the whole run exits if two *different* files in the same directory differ only by case.
 - The original filename is not part of the new name, so two different files with the same
   datetime, identity (or no usable identity), byte size, normalized camera suffix, and output
-  extension collide: the first wins, the second gets `(001)`, `(002)`… or is appended to
+  extension collide: the first wins, the second gets `_DUP000`, `_DUP001`… or is appended to
   `_camerafilesrename_<unixtime>.log` when no suffix can be assigned. New names are registered in
   the index after each rename so within-run collisions are caught (rename() would otherwise
   silently overwrite). In file-list mode the index only contains the listed files, so the same

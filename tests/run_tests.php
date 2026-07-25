@@ -134,9 +134,9 @@ $leicaName = '20241102_153045_' . $fixtureSize('leica.jpg') . '_LEICAQ3.jpeg';
 $photoName = date('Ymd_His', MTIME_PHOTO) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $lowerName = date('Ymd_His', MTIME_LOWER) . '_' . $fixtureSize('plain.jpg') . '.jpeg';
 $videoName = date('Ymd_His', MTIME_VIDEO) . '_' . $fixtureSize('video.mov') . '.mov';
-$videoName001 = preg_replace('/\.mov$/', '(001).mov', $videoName);
-$videoName002 = preg_replace('/\.mov$/', '(002).mov', $videoName);
-$photoName001 = preg_replace('/\.jpeg$/', '(001).jpeg', $photoName);
+$videoNameDup000 = preg_replace('/\.mov$/', '_DUP000.mov', $videoName);
+$videoNameDup001 = preg_replace('/\.mov$/', '_DUP001.mov', $videoName);
+$photoNameDup000 = preg_replace('/\.jpeg$/', '_DUP000.jpeg', $photoName);
 $migratedName = '00000000_000000_' . $fixtureSize('image.raf') . '.raf';
 $zeroName = '00000000_000000_' . $fixtureSize('image_small.raf') . '.raf';
 $tinyName = '20241102_153045_' . $fixtureSize('tiny.raf') . '.raf';
@@ -175,7 +175,7 @@ $check(in_array($exifName, $files1, true), "EXIF DateTimeOriginal + byte size + 
 $check(in_array($photoName, $files1, true), "FileDateTime (mtime) fallback: $photoName");
 $check(in_array($lowerName, $files1, true), "all-lowercase source processed, no self-collision abort: $lowerName");
 $check(in_array($videoName, $files1, true), "video named from mtime: $videoName");
-$check(in_array($videoName001, $files1, true), "duplicate .mov gets (001) suffix: $videoName001");
+$check(in_array($videoNameDup000, $files1, true), "duplicate .mov gets _DUP000 suffix: $videoNameDup000");
 $movLosers = array_intersect(['MOV_0001.mov', 'MOV_0002.mov'], $files1);
 $check(count($movLosers) === 0, 'same-second + same-size collision: no source .mov left unrenamed');
 $check(in_array($rafExifName, $files1, true), "RAF date read from embedded JPEG preview, not mtime: $rafExifName");
@@ -261,7 +261,7 @@ echo "--- Run 3b: list of files in same directory ---\n";
 $files3b = $listFiles($filesDir);
 $check($exitCode3b === 0, 'file-list mode runs without fatal error');
 $check(in_array($videoName, $files3b, true), 'listed video renamed from mtime');
-$check(in_array($videoName001, $files3b, true), 'listed duplicate .mov gets (001) suffix');
+$check(in_array($videoNameDup000, $files3b, true), 'listed duplicate .mov gets _DUP000 suffix');
 $movLosers3b = array_intersect(['CLIP_A.mov', 'CLIP_B.mov'], $files3b);
 $check(count($movLosers3b) === 0, 'listed .mov collision leaves no source untouched');
 $check(in_array($photoName, $files3b, true), 'listed .jpg renamed as .jpeg');
@@ -275,7 +275,7 @@ touch("$filesDir/GUARD.JPG", MTIME_PHOTO);
 echo "--- Run 3c: existing-target guard in file-list mode ---\n";
 [$output3c, $exitCode3c] = $runScript(["$filesDir/GUARD.JPG"]);
 $check($exitCode3c === 0, 'file-list mode exits cleanly on existing-target guard');
-$check(is_file("$filesDir/$photoName001"), "GUARD.JPG renamed with (001) suffix: $photoName001");
+$check(is_file("$filesDir/$photoNameDup000"), "GUARD.JPG renamed with _DUP000 suffix: $photoNameDup000");
 $check(!file_exists("$filesDir/GUARD.JPG"), 'GUARD.JPG removed after rename');
 $check(!str_contains($output3c, 'already exists.'), 'no collision error for suffix rename of existing target');
 
@@ -371,8 +371,8 @@ echo "--- Run 6a: triple collision ---\n";
 $files6a = $listFiles($tripleDir);
 $check($exitCode6a === 0, 'triple collision run completes');
 $check(in_array($videoName, $files6a, true), 'triple collision: first .mov gets plain name');
-$check(in_array($videoName001, $files6a, true), 'triple collision: second .mov gets (001) suffix');
-$check(in_array($videoName002, $files6a, true), 'triple collision: third .mov gets (002) suffix');
+$check(in_array($videoNameDup000, $files6a, true), 'triple collision: second .mov gets _DUP000 suffix');
+$check(in_array($videoNameDup001, $files6a, true), 'triple collision: third .mov gets _DUP001 suffix');
 $check(
     array_intersect(['TRIPLE_A.mov', 'TRIPLE_B.mov', 'TRIPLE_C.mov'], $files6a) === [],
     'triple collision: no source .mov left unrenamed'
@@ -381,8 +381,8 @@ $check(
 // 6b: Existing suffixed file on disk from a previous run.
 $existingSuffixDir = $makeDir();
 copy("$fixturesDir/video.mov", "$existingSuffixDir/PREVIOUS.mov");
-// Simulate a previous run that left (001) behind.
-rename("$existingSuffixDir/PREVIOUS.mov", "$existingSuffixDir/$videoName001");
+// Simulate a previous run that left _DUP000 behind.
+rename("$existingSuffixDir/PREVIOUS.mov", "$existingSuffixDir/$videoNameDup000");
 copy("$fixturesDir/video.mov", "$existingSuffixDir/NEW_A.mov");
 copy("$fixturesDir/video.mov", "$existingSuffixDir/NEW_B.mov");
 touch("$existingSuffixDir/NEW_A.mov", MTIME_VIDEO);
@@ -393,8 +393,8 @@ echo "--- Run 6b: existing suffixed file on disk ---\n";
 $files6b = $listFiles($existingSuffixDir);
 $check($exitCode6b === 0, 'existing suffix run completes');
 $check(in_array($videoName, $files6b, true), 'existing suffix: first new .mov gets plain name');
-$check(in_array($videoName001, $files6b, true), 'existing suffix: pre-existing (001) file untouched');
-$check(in_array($videoName002, $files6b, true), 'existing suffix: second new .mov gets (002) suffix');
+$check(in_array($videoNameDup000, $files6b, true), 'existing suffix: pre-existing _DUP000 file untouched');
+$check(in_array($videoNameDup001, $files6b, true), 'existing suffix: second new .mov gets _DUP001 suffix');
 $check(
     array_intersect(['NEW_A.mov', 'NEW_B.mov'], $files6b) === [],
     'existing suffix: no new source .mov left unrenamed'
@@ -457,12 +457,12 @@ $check(
     'concurrent run: first .mov gets plain name'
 );
 $check(
-    in_array($videoName001, $renamedFiles7, true),
-    'concurrent run: second .mov gets (001) suffix'
+    in_array($videoNameDup000, $renamedFiles7, true),
+    'concurrent run: second .mov gets _DUP000 suffix'
 );
 $check(
-    in_array($videoName002, $renamedFiles7, true),
-    'concurrent run: third .mov gets (002) suffix'
+    in_array($videoNameDup001, $renamedFiles7, true),
+    'concurrent run: third .mov gets _DUP001 suffix'
 );
 $check(
     array_intersect(['PARALLEL_A.mov', 'PARALLEL_B.mov', 'PARALLEL_C.mov'], $renamedFiles7) === [],
@@ -685,7 +685,7 @@ copy("$fixturesDir/exif.jpg", "$sidecarCollisionDir/FIRST.JPG");
 copy("$fixturesDir/exif.jpg", "$sidecarCollisionDir/SECOND.JPG");
 file_put_contents("$sidecarCollisionDir/FIRST.XMP", $firstSidecarContent);
 file_put_contents("$sidecarCollisionDir/SECOND.xmp", $secondSidecarContent);
-$sidecarName001 = preg_replace('/\.xmp$/', '(001).xmp', $sidecarName);
+$sidecarNameDup000 = preg_replace('/\.xmp$/', '_DUP000.xmp', $sidecarName);
 
 echo "--- Run 15c: selected sidecar collision pairing ---\n";
 [$output15d, $exitCode15d] = $runScript([
@@ -696,7 +696,7 @@ echo "--- Run 15c: selected sidecar collision pairing ---\n";
 ]);
 $check($exitCode15d === 0, 'selected image/sidecar collision run exits 0');
 $check(
-    is_file("$sidecarCollisionDir/$exifName") && is_file("$sidecarCollisionDir/$sidecarName001"),
+    is_file("$sidecarCollisionDir/$exifName") && is_file("$sidecarCollisionDir/$sidecarNameDup000"),
     'colliding images and sidecars receive matching generated names'
 );
 $check(
@@ -708,7 +708,7 @@ $check(
 );
 $renamedSidecarContents = [
     file_get_contents("$sidecarCollisionDir/$sidecarName"),
-    file_get_contents("$sidecarCollisionDir/$sidecarName001"),
+    file_get_contents("$sidecarCollisionDir/$sidecarNameDup000"),
 ];
 sort($renamedSidecarContents);
 $expectedSidecarContents = [$firstSidecarContent, $secondSidecarContent];
