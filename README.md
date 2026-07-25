@@ -81,10 +81,16 @@ osascript -e "display dialog \"$RESULT\" with title \"Camera Files Rename\" butt
 
 ## How it works
 
+- **Output names:** Files use `YYYYMMDD_HHIISS_FILESIZE_MAKEMODEL.ext`. EXIF Make and Model are
+  uppercased, reduced to alphanumeric characters, and concatenated. Missing or unrecognizable
+  fields are omitted. For Leica metadata, normalized Make `LEICACAMERAAG` is omitted when the
+  normalized Model contains `LEICA` (for example, `Leica Camera AG` + `Leica Q3` becomes
+  `LEICAQ3`). `.jpg` inputs are written with a `.jpeg` extension; `.jpg` remains accepted when
+  recognizing legacy renamed filenames.
 - **Date extraction:** EXIF `DateTimeOriginal` → `DateTime` → `FileDateTime`; `.mov`/`.mp4` always use file mtime. For `.raf` files, EXIF is read from the embedded JPEG preview, since PHP cannot parse the RAF container directly.
-- **Duplicate handling:** If two files have the same datetime and size, the first gets the plain name, duplicates get `(001)`, `(002)`… suffixes.
+- **Duplicate handling:** If two files have the same datetime, byte size, normalized camera suffix, and output extension, the first gets the plain name, duplicates get `(001)`, `(002)`… suffixes.
 - **Concurrency safety:** Per-directory `flock()` locking prevents race conditions when multiple Finder selections launch parallel instances.
-- **Idempotency:** Already-renamed files are skipped on subsequent runs.
+- **Idempotency:** A file is skipped only when its encoded byte size matches the current file and its camera suffix and extension are current. Changed-size files are reprocessed; formatted names without a camera suffix are also inspected for EXIF metadata, and legacy `.jpg` names are migrated to `.jpeg`.
 - **iCloud placeholder guard (macOS only):** Files stored in iCloud Drive with "Optimize Mac Storage" enabled may exist as lightweight placeholders locally, where only a Quick Look preview is kept and the full EXIF data is unavailable. The script detects this in two ways: (1) `mdls kMDItemIsDownloaded` where supported, and (2) a disk-usage heuristic — if a photo file (> 100 KB) has no EXIF date and less than 8 KB is actually allocated on disk, it is skipped with a message instead of being renamed to a zero-date name.
 
 ---
